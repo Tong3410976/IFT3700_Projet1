@@ -140,3 +140,9 @@ dmypy.json
 
 # Ruff
 .ruff_cache/
+
+# Données téléchargées depuis l'API de la LNH
+data/
+
+# Configuration locale de PyCharm
+.idea/
