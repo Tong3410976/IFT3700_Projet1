@@ -19,6 +19,23 @@ COLUMNS = [
 
 
 def get_target_net(team_id, home_team_id, defending_side):
+    """
+    Calcule la position du filet visé par le tir.
+
+    Parameters
+    ----------
+    team_id : int
+        Identifiant de l'équipe.
+    home_team_id : int
+        Identifiant de l'équipe à domicile.
+    defending_side : str
+        Côté défendu par l'équipe à domicile.
+
+    Returns
+    -------
+    int
+        Position du filet visé par le tir.
+    """
     if team_id is None or home_team_id is None:
         return None
 
@@ -32,6 +49,31 @@ def get_target_net(team_id, home_team_id, defending_side):
 
 
 def calculate_shot_distance(x, y, team_id, home_team_id, defending_side):
+    """
+    Calcule la distance entre le tir et le filet.
+
+    Parameters
+    ----------
+    x : float
+        Coordonnée x du tir.
+
+    y : float
+        Coordonnée y du tir.
+
+    team_id : int
+        Identifiant de l'équipe.
+
+    home_team_id : int
+        Identifiant de l'équipe à domicile.
+
+    defending_side : str
+        Côté défendu par l'équipe à domicile.
+
+    Returns
+    -------
+    float
+        Distance entre le tir et le filet.
+    """
     if x is None or y is None:
         return None
 
@@ -42,8 +84,30 @@ def calculate_shot_distance(x, y, team_id, home_team_id, defending_side):
 
 def calculate_shot_angle(x, y, team_id, home_team_id, defending_side):
     """
-    Angle absolu exploratoire (0 à 90 degrés).
+    Angle absolu  (0 à 90 degrés) entre le tir et le filet.
     Les tirs derrière la ligne de but restent inconnus.
+
+    Parameters
+    ----------
+    x : float
+        Coordonnée x du tir.
+
+    y : float
+        Coordonnée y du tir.
+
+    team_id : int
+        Identifiant de l'équipe.
+
+    home_team_id : int
+        Identifiant de l'équipe à domicile.
+
+    defending_side : str
+        Côté défendu par l'équipe à domicile.
+
+    Returns
+    -------
+    float
+        Angle entre le tir et le filet.
     """
 
     if x is None or y is None:
@@ -54,7 +118,7 @@ def calculate_shot_angle(x, y, team_id, home_team_id, defending_side):
     if net_x is None:
         return None
 
-    # Ne pas attribuer artificiellement 0 degré
+    # Ne pas attribuer  0 degré
     # aux tirs effectués derrière le filet.
     if (net_x == 89 and x > 89) or (net_x == -89 and x < -89):
         return None
@@ -63,6 +127,22 @@ def calculate_shot_angle(x, y, team_id, home_team_id, defending_side):
 
 
 def get_player_name(player_id, roster):
+    """
+    Avoir le nom du joueur
+
+    Parameters
+    ----------
+    player_id : int
+        Identifiant du joueur.
+
+    roster : dict
+        Dictionnaire contenant les joueurs.
+
+    Returns
+    -------
+    str
+        Nom du joueur.
+    """
     player = roster.get(player_id) if player_id is not None else None
 
     if not player:
@@ -94,6 +174,7 @@ def parse_situation(code, team_id, home_team_id):
     if team_id is None or home_team_id is None:
         return None, None, None
 
+    # ag, av, hv, hg = gardien visiteur, patineurs visiteurs, patineurs domicile, gardien domicile
     ag, av, hv, hg = map(int, code)
 
     if ag not in (0, 1) or hg not in (0, 1):
