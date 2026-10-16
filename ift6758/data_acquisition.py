@@ -1,15 +1,25 @@
 import json
+import os
 from pathlib import Path
 
 import requests
 
+
 # Définir la racine du projet
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# Dossier par défaut pour les données brutes
-DEFAULT_DATA_DIR = PROJECT_ROOT / "data" / "raw"
+# Dossier par défaut pour les données brutes.
+# Chaque membre de l'équipe peut définir la variable d'environnement
+# IFT6758_DATA_DIR pour utiliser un autre emplacement local.
+DEFAULT_DATA_DIR = Path(
+    os.environ.get(
+        "IFT6758_DATA_DIR",
+        str(PROJECT_ROOT / "data" / "raw"),
+    )
+)
 
-def build_regular_game_id(season_start, game_number):
+
+def build_regular_game_id(season_start: int, game_number: int) -> int:
     """
     Construire l'identifiant d'un match de saison régulière.
 
@@ -32,7 +42,8 @@ def build_regular_game_id(season_start, game_number):
 
     return int(game_id)
 
-def get_game_ids(season_id, game_type):
+
+def get_game_ids(season_id: int, game_type: int) -> list[int]:
     """
     Récupérer les identifiants des matchs d'une saison donnée.
 
@@ -48,7 +59,7 @@ def get_game_ids(season_id, game_type):
 
     Returns
     -------
-    list
+    list[int]
         Liste des GAME_ID correspondant à la saison et au type de match.
     """
 
@@ -65,7 +76,7 @@ def get_game_ids(season_id, game_type):
     # Filtrer selon la saison et le type de match
     params = {
         "cayenneExp": f"season={season_id} and gameType={game_type}",
-        "limit": 2000
+        "limit": 2000,
     }
 
     # Envoyer la requête
@@ -81,7 +92,11 @@ def get_game_ids(season_id, game_type):
     # Trier les identifiants pour avoir un ordre stable
     return sorted(game_ids)
 
-def download_game(game_id, data_dir=DEFAULT_DATA_DIR):
+
+def download_game(
+    game_id: int,
+    data_dir: Path | str = DEFAULT_DATA_DIR,
+) -> dict:
     """
     Télécharger ou charger les données play-by-play d'un match de la LNH.
 
@@ -90,7 +105,7 @@ def download_game(game_id, data_dir=DEFAULT_DATA_DIR):
     game_id : int
         Identifiant unique du match.
 
-    data_dir : Path
+    data_dir : Path | str
         Dossier où les fichiers JSON sont sauvegardés.
 
     Returns
@@ -98,6 +113,9 @@ def download_game(game_id, data_dir=DEFAULT_DATA_DIR):
     dict
         Données du match sous forme de dictionnaire Python.
     """
+
+    # Accepter aussi bien un objet Path qu'une chaîne de caractères
+    data_dir = Path(data_dir)
 
     # Créer le dossier de données s'il n'existe pas
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -128,7 +146,12 @@ def download_game(game_id, data_dir=DEFAULT_DATA_DIR):
 
     return game_data
 
-def download_season(season_id, max_games=None):
+
+def download_season(
+    season_id: int,
+    data_dir: Path | str = DEFAULT_DATA_DIR,
+    max_games: int | None = None,
+) -> None:
     """
     Télécharger les matchs de saison régulière et des séries éliminatoires
     pour une saison donnée.
@@ -138,16 +161,21 @@ def download_season(season_id, max_games=None):
     season_id : int
         Identifiant de la saison, par exemple 20232024.
 
-    max_games : int or None
+    data_dir : Path | str
+        Dossier racine où les données de la saison seront sauvegardées.
+
+    max_games : int | None
         Nombre maximal de matchs à télécharger pour chaque type.
         Utile pour effectuer des tests.
         Si None, tous les matchs sont téléchargés.
     """
 
+    data_dir = Path(data_dir)
+
     # Associer le type numérique à un nom de dossier
     game_types = {
         2: "regular",
-        3: "playoffs"
+        3: "playoffs",
     }
 
     for game_type, folder_name in game_types.items():
@@ -160,7 +188,7 @@ def download_season(season_id, max_games=None):
             game_ids = game_ids[:max_games]
 
         # Créer un dossier propre pour cette saison et ce type de match
-        season_dir = DEFAULT_DATA_DIR / str(season_id) / folder_name
+        season_dir = data_dir / str(season_id) / folder_name
 
         print()
         print(
@@ -173,6 +201,24 @@ def download_season(season_id, max_games=None):
             try:
                 download_game(game_id, data_dir=season_dir)
 
+            except requests.HTTPError as erreur:
+                if (
+                    erreur.response is not None
+                    and erreur.response.status_code == 404
+                ):
+                    print(
+                        "Match ignoré (play-by-play indisponible) : "
+                        f"{game_id}"
+                    )
+                else:
+                    print(
+                        f"Erreur HTTP pour le match {game_id} : "
+                        f"{erreur}"
+                    )
+
             except requests.RequestException as erreur:
-                # Continuer même si un match ne peut pas être téléchargé
-                print(f"Erreur pour le match {game_id} : {erreur}")
+                # Continuer même en cas de problème de connexion
+                print(
+                    f"Erreur de connexion pour le match {game_id} : "
+                    f"{erreur}"
+                )
