@@ -1,6 +1,8 @@
 import json
 import os
 from pathlib import Path
+import pandas as pd
+from PIL import Image
 
 import requests
 
@@ -222,3 +224,59 @@ def download_season(
                     f"Erreur de connexion pour le match {game_id} : "
                     f"{erreur}"
                 )
+
+
+def load_game(
+    season_id: int,
+    season_type: str,
+    game_id: int,
+    data_dir: Path | str = DEFAULT_DATA_DIR
+) -> pd.DataFrame:
+    """
+    Charge les données d'un match depuis sa saison, son type de saison et son indentifiant.
+
+    Parameters
+    ----------
+    season_id : int
+        Identifiant de la saison, par exemple 20232024.
+
+    season_type : str
+        Type de la saison entre régulière ou éliminatoires.
+
+    data_dir : Path | str
+        Dossier racine où les données de la saison seront sauvegardées.
+    
+    game_id : int
+        Identifiant du match.
+    """
+
+    #Récupère le chemin du fichier
+    file_path = Path(data_dir) / str(season_id) / season_type / f"{game_id}.json"
+    
+    #Dictionnaire qui contient le contenu du fichier JSON
+    with open(file_path, 'r', encoding='utf-8') as file:
+            raw_data = json.load(file)
+
+    #Transforme le json en DataFrame
+    df_game = pd.json_normalize(raw_data)
+
+    return df_game
+
+
+def draw_rink(fig):
+    """
+        Dessine le terrain
+    """
+    path_rink = Path("../figures/nhl_rink.png")
+
+    if path_rink.exists():
+        img = Image.open(path_rink)
+        fig.add_layout_image(dict(source=img,xref="x",yref="y", x=-100, y=42.5, sizex=200, sizey=85, sizing="stretch", opacity=1, layer="below"))
+    else:
+        print("Le chemin \"{path_rink}\" n'existe pas")
+        return None
+    fig.update_xaxes(range=[-103, 103], title="x (ft)", constrain="domain")
+    fig.update_yaxes(range=[-46, 46], title="y (ft)", scaleanchor="x", scaleratio=1, constrain="domain")
+    fig.update_layout(template="plotly_white", height=460,
+                      margin=dict(l=55, r=25, t=55, b=50))
+    return fig
