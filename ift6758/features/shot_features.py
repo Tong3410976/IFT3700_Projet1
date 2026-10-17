@@ -4,6 +4,7 @@
 import json
 import math
 from pathlib import Path
+import numpy as np
 
 import pandas as pd
 
@@ -380,3 +381,48 @@ def normalize_shots(pixel_x,pixel_y):
     )
 
     return data_shots_normalize
+
+def shots_per_hour(n_bins_x, n_bins_y, season):
+    """
+        Retourne un tableau qui compte le nombre de tir et son taux de tirs par heure-équipe par région du terrain
+    """
+    data_shots_normalized = pd.read_csv('../data/processed/shots_normalized.csv')
+
+    shots = data_shots_normalized.loc[data_shots_normalized["season"] == season] 
+
+    nbr_match = shots["game_id"].nunique()
+
+    interval_x = 100/n_bins_x
+    interval_y = 85/n_bins_y
+
+    rows = []
+
+    for x in np.arange(0, 100, interval_x):
+        for y in np.arange(-42.5, 42.5, interval_y):
+            x_min = x
+            x_max = x + interval_x
+            y_min = y
+            y_max = y + interval_y
+
+            if (x_max == 100) & (y_max == 42.5):
+                shots_zone = shots.loc[(shots["x_coord"] >= x_min)&(shots["x_coord"] <= x_max)&(shots["y_coord"] >= y_min)&(shots["y_coord"] <= y_max)]
+            elif(x_max == 100):
+                shots_zone = shots.loc[(shots["x_coord"] >= x_min)&(shots["x_coord"] <= x_max)&(shots["y_coord"] >= y_min)&(shots["y_coord"] < y_max)]
+            elif(y_max == 42.5):
+                shots_zone = shots.loc[(shots["x_coord"] >= x_min)&(shots["x_coord"] < x_max)&(shots["y_coord"] >= y_min)&(shots["y_coord"] <= y_max)]
+            else:
+                shots_zone = shots.loc[(shots["x_coord"] >= x_min)&(shots["x_coord"] < x_max)&(shots["y_coord"] >= y_min)&(shots["y_coord"] < y_max)]
+
+            nbr_shots = len(shots_zone)
+            taux_shots = nbr_shots/(2*nbr_match)
+
+            rows.append({
+                "Bins": f"({x_min}; {x_max}) ({y_min}; {y_max})",
+                "Nombre de tir" : nbr_shots,
+                "Taux de tirs par heure-équipe" : taux_shots
+            })
+
+    df = pd.DataFrame(rows)
+    df = df.set_index("Bins")
+
+    return df
