@@ -11,7 +11,7 @@ import pandas as pd
 COLUMNS = [
     'game_id', 'event_id', 'season', 'game_type', 'game_date',
     'period', 'period_type', 'time_in_period', 'event_type', 'is_goal',
-    'team_id', 'team_name', 'x_coord', 'y_coord', 'shooter_id',
+    'team_id', 'team_name', 'x_coord', 'y_coord', 'zone_code', 'shooter_id',
     'shooter_name', 'goalie_id', 'goalie_name', 'shot_type',
     'empty_net', 'strength', 'strength_category', 'situation_code',
     'shot_distance', 'shot_angle',
@@ -254,6 +254,8 @@ def extract_shots(game_data):
         x = det.get('xCoord')
         y = det.get('yCoord')
 
+        zone_code = det.get('zoneCode')
+
         side = play.get('homeTeamDefendingSide')
         scode = play.get('situationCode')
 
@@ -285,6 +287,7 @@ def extract_shots(game_data):
             'team_name': team_info.get('abbrev'),
             'x_coord': x,
             'y_coord': y,
+            'zone_code' : zone_code,
             'shooter_id': shooter_id,
             'shooter_name': get_player_name(shooter_id, roster),
             'goalie_id': goalie_id,
@@ -324,3 +327,56 @@ if __name__ == '__main__':
     )
 
     print('\nManquants :\n', frame.isna().sum().to_string())
+
+
+
+def normalize_shots(pixel_x,pixel_y):
+    """
+        Transforme les coordonnées de chaque tir dans le fichier csv
+        selon le format (pixel_x, pixel_y) du fichier.
+    """
+    data_shots = pd.read_csv('../data/processed/shots.csv')
+
+    columns = [
+        "game_id",
+        "event_id",
+        "season",
+        "game_type",
+        "team_id",
+        "period",
+        "x_coord",
+        "y_coord"
+    ]
+
+    data_shots_normalize = data_shots[columns].copy()
+    
+    offensive_events = data_shots.loc[data_shots["zone_code"] == "O"]
+
+    x_sums = (offensive_events.groupby(["game_id", "team_id", "period"])["x_coord"].sum())
+
+    directions = x_sums.reset_index()
+    directions["invert"] = directions["x_coord"] < 0
+
+    for row in directions.itertuples():
+        game_id = row.game_id
+        team_id = row.team_id
+        period = row.period
+        invert = row.invert
+
+        mask = (
+            (data_shots_normalize["game_id"] == game_id)
+            & (data_shots_normalize["team_id"] == team_id)
+            & (data_shots_normalize["period"] == period)
+        )
+        if invert:
+            data_shots_normalize.loc[mask, "x_coord"] *= -1
+            data_shots_normalize.loc[mask, "y_coord"] *= -1
+
+    data_shots_normalize["pixel_x"] = ((data_shots_normalize["y_coord"] + 42.5) * pixel_y)/ 85
+    data_shots_normalize["pixel_y"] = (data_shots_normalize["x_coord"] * pixel_x)/ 100
+    data_shots_normalize.to_csv(
+            "../data/processed/shots_normalized.csv",
+            index=False
+    )
+
+    return data_shots_normalize
