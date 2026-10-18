@@ -331,14 +331,17 @@ if __name__ == '__main__':
 
 
 
-def normalize_shots(pixel_x,pixel_y):
+def normalize_shots(pixel_x = None,pixel_y = None):
     """
-        Transforme les coordonnées de chaque tir dans le fichier csv
-        selon le format (pixel_x, pixel_y) du fichier.
+        Transforme les coordonnées de chaque tir dans le fichier csv pour les orienter dans la demi-glace.
+        En option on peux convertir les coordonnées en pixel.
     """
-    data_shots = pd.read_csv('../data/processed/shots.csv')
+    root = Path(__file__).resolve().parents[2]
+    data_shots = pd.read_csv(root/'data'/'processed'/'shots.csv')
 
-    columns = [
+    # Garder toutes les colonnes ?
+    '''
+     columns = [
         "game_id",
         "event_id",
         "season",
@@ -347,46 +350,44 @@ def normalize_shots(pixel_x,pixel_y):
         "period",
         "x_coord",
         "y_coord"
-    ]
-
-    data_shots_normalize = data_shots[columns].copy()
+    ] 
+    '''
+    # data_shots_normalize = data_shots[columns].copy()
+    data_shots_normalize = data_shots.copy()
     
-    offensive_events = data_shots.loc[data_shots["zone_code"] == "O"]
+    offensive_events = data_shots.loc[data_shots_normalize["zone_code"] == "O"]
 
-    x_sums = (offensive_events.groupby(["game_id", "team_id", "period"])["x_coord"].sum())
+    x_mean = (offensive_events.groupby(["game_id", "team_id", "period"])["x_coord"].mean().rename('x_mean'))
 
-    directions = x_sums.reset_index()
-    directions["invert"] = directions["x_coord"] < 0
+    data_shots_normalize = data_shots_normalize.join(x_mean, on= ['game_id', 'team_id', 'period'])
+    # S'il n'y a pas eu d'événement O pendant une période alors on utilise juste la coordonnée de x de l'événement  
+    invert = data_shots_normalize['x_mean'].fillna(data_shots_normalize['x_coord']) < 0
 
-    for row in directions.itertuples():
-        game_id = row.game_id
-        team_id = row.team_id
-        period = row.period
-        invert = row.invert
+    # On rajoute les colonnes 
+    data_shots_normalize["x_norm"] = data_shots_normalize["x_coord"]
+    data_shots_normalize["y_norm"] = data_shots_normalize["y_coord"]
+    data_shots_normalize.loc[invert, ["x_norm", "y_norm"]] *= -1
 
-        mask = (
-            (data_shots_normalize["game_id"] == game_id)
-            & (data_shots_normalize["team_id"] == team_id)
-            & (data_shots_normalize["period"] == period)
-        )
-        if invert:
-            data_shots_normalize.loc[mask, "x_coord"] *= -1
-            data_shots_normalize.loc[mask, "y_coord"] *= -1
+    # On a plus besoin de la colonne moyenne
+    data_shots_normalize = data_shots_normalize.drop(columns=["x_mean"])
 
-    data_shots_normalize["pixel_x"] = ((data_shots_normalize["y_coord"] + 42.5) * pixel_y)/ 85
-    data_shots_normalize["pixel_y"] = (data_shots_normalize["x_coord"] * pixel_x)/ 100
-    data_shots_normalize.to_csv(
-            "../data/processed/shots_normalized.csv",
-            index=False
-    )
+    if pixel_x is not None and pixel_y is not None:
+        data_shots_normalize["x_pixel"] = (data_shots_normalize["x_norm"] * pixel_x)/100
+        # On rajoute 42.5 car les y peuvent aller jusqu'à -42.5
+        data_shots_normalize["y_pixel"] = ((data_shots_normalize["y_norm"] + 42.5) * pixel_y)/100
+
+    data_shots_normalize.to_csv(root/'data'/'processed'/'shots_normalized.csv', index=False)
 
     return data_shots_normalize
 
-def shots_per_hour(n_bins_x, n_bins_y, season):
+def shots_per_hour(n_bins_x, n_bins_y, season, team=None):
     """
-        Retourne un tableau qui compte le nombre de tir et son taux de tirs par heure-équipe par région du terrain
+        team = team_id
+        Retourne un tableau qui compte le nombre de tir et son taux de tirs par heure-équipe par région du terrain.
+        Si l'équipe est précisé : Retourne le taux exédentaire de tirs de l'équipe par rapport à la ligue.
     """
-    data_shots_normalized = pd.read_csv('../data/processed/shots_normalized.csv')
+    root = Path(__file__).resolve().parents[2]
+    data_shots_normalized = pd.read_csv(root/'data'/'processed'/'shots_normalized.csv')
 
     shots = data_shots_normalized.loc[data_shots_normalized["season"] == season] 
 
@@ -397,6 +398,13 @@ def shots_per_hour(n_bins_x, n_bins_y, season):
 
     rows = []
 
+    if team is not None:
+        shots_team = shots.loc[(shots["team_id"] == team)]
+        nbr_match_team = shots_team["game_id"].nunique()
+
+        if nbr_match_team == 0:
+            return None
+
     for x in np.arange(0, 100, interval_x):
         for y in np.arange(-42.5, 42.5, interval_y):
             x_min = x
@@ -405,22 +413,45 @@ def shots_per_hour(n_bins_x, n_bins_y, season):
             y_max = y + interval_y
 
             if (x_max == 100) & (y_max == 42.5):
-                shots_zone = shots.loc[(shots["x_coord"] >= x_min)&(shots["x_coord"] <= x_max)&(shots["y_coord"] >= y_min)&(shots["y_coord"] <= y_max)]
+                shots_zone = shots.loc[(shots["x_norm"] >= x_min)&(shots["x_norm"] <= x_max)&(shots["y_norm"] >= y_min)&(shots["y_norm"] <= y_max)]
             elif(x_max == 100):
-                shots_zone = shots.loc[(shots["x_coord"] >= x_min)&(shots["x_coord"] <= x_max)&(shots["y_coord"] >= y_min)&(shots["y_coord"] < y_max)]
+                shots_zone = shots.loc[(shots["x_norm"] >= x_min)&(shots["x_norm"] <= x_max)&(shots["y_norm"] >= y_min)&(shots["y_norm"] < y_max)]
             elif(y_max == 42.5):
-                shots_zone = shots.loc[(shots["x_coord"] >= x_min)&(shots["x_coord"] < x_max)&(shots["y_coord"] >= y_min)&(shots["y_coord"] <= y_max)]
+                shots_zone = shots.loc[(shots["x_norm"] >= x_min)&(shots["x_norm"] < x_max)&(shots["y_norm"] >= y_min)&(shots["y_norm"] <= y_max)]
             else:
-                shots_zone = shots.loc[(shots["x_coord"] >= x_min)&(shots["x_coord"] < x_max)&(shots["y_coord"] >= y_min)&(shots["y_coord"] < y_max)]
+                shots_zone = shots.loc[(shots["x_norm"] >= x_min)&(shots["x_norm"] < x_max)&(shots["y_norm"] >= y_min)&(shots["y_norm"] < y_max)]
 
             nbr_shots = len(shots_zone)
             taux_shots = nbr_shots/(2*nbr_match)
 
-            rows.append({
-                "Bins": f"({x_min}; {x_max}) ({y_min}; {y_max})",
-                "Nombre de tir" : nbr_shots,
-                "Taux de tirs par heure-équipe" : taux_shots
-            })
+            if team is None: 
+                rows.append({
+                    "Bins": f"({x_min}; {x_max}) ({y_min}; {y_max})",
+                    "Nombre de tir" : nbr_shots,
+                    "Taux de tirs par heure-équipe" : taux_shots
+                })
+            else:
+
+                if (x_max == 100) & (y_max == 42.5):
+                    shots_zone_team = shots_team.loc[(shots_team["x_norm"] >= x_min)&(shots_team["x_norm"] <= x_max)&(shots_team["y_norm"] >= y_min)&(shots_team["y_norm"] <= y_max)]
+                elif(x_max == 100):
+                    shots_zone_team = shots_team.loc[(shots_team["x_norm"] >= x_min)&(shots_team["x_norm"] <= x_max)&(shots_team["y_norm"] >= y_min)&(shots_team["y_norm"] < y_max)]
+                elif(y_max == 42.5):
+                    shots_zone_team = shots_team.loc[(shots_team["x_norm"] >= x_min)&(shots_team["x_norm"] < x_max)&(shots_team["y_norm"] >= y_min)&(shots_team["y_norm"] <= y_max)]
+                else:
+                    shots_zone_team = shots_team.loc[(shots_team["x_norm"] >= x_min)&(shots_team["x_norm"] < x_max)&(shots_team["y_norm"] >= y_min)&(shots_team["y_norm"] < y_max)]
+
+                nbr_shots_team = len(shots_zone_team)
+                taux_shots_team = nbr_shots_team/(nbr_match_team)
+                taux_excess = taux_shots_team - taux_shots
+
+                rows.append({
+                    "Bins": f"({x_min}; {x_max}) ({y_min}; {y_max})",
+                    "Nombre de tir de l'équipe" : nbr_shots_team,
+                    "Taux de tirs par heure-équipe" : taux_shots_team,
+                    "Taux de tirs de la ligue" : taux_shots,
+                    "Taux d'excédentaire" : taux_excess
+                })    
 
     df = pd.DataFrame(rows)
     df = df.set_index("Bins")
