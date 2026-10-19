@@ -48,7 +48,6 @@ def get_target_net(team_id, home_team_id, defending_side):
 
     return 89 if defending_side == 'right' else -89
 
-
 def calculate_shot_distance(x, y, team_id, home_team_id, defending_side):
     """
     Calcule la distance entre le tir et le filet.
@@ -81,6 +80,28 @@ def calculate_shot_distance(x, y, team_id, home_team_id, defending_side):
     net_x = get_target_net(team_id, home_team_id, defending_side)
 
     return math.hypot(x - net_x, y) if net_x is not None else None
+
+
+def calculate_shot_distance_ancient(x, y):
+    """
+    Calcule la distance entre le tir et le filet.
+
+    Parameters
+    ----------
+    x : float
+        Coordonnée x du tir.
+
+    y : float
+        Coordonnée y du tir.
+
+    Returns
+    -------
+    float
+        Distance entre le tir et le filet.
+    """
+    
+
+    return math.hypot(x - 89, y)
 
 
 def calculate_shot_angle(x, y, team_id, home_team_id, defending_side):
@@ -126,6 +147,45 @@ def calculate_shot_angle(x, y, team_id, home_team_id, defending_side):
 
     return math.degrees(math.atan2(abs(y), abs(net_x - x)))
 
+def calculate_shot_angle_ancient(x, y):
+    """
+    Angle absolu  (0 à 90 degrés) entre le tir et le filet.
+    Les tirs derrière la ligne de but restent inconnus.
+
+    Parameters
+    ----------
+    x : float
+        Coordonnée x du tir.
+
+    y : float
+        Coordonnée y du tir.
+
+    team_id : int
+        Identifiant de l'équipe.
+
+    home_team_id : int
+        Identifiant de l'équipe à domicile.
+
+    defending_side : str
+        Côté défendu par l'équipe à domicile.
+
+    Returns
+    -------
+    float
+        Angle entre le tir et le filet.
+    """
+
+    if x is None or y is None:
+        return None
+
+    net_x = 89
+
+    # Ne pas attribuer  0 degré
+    # aux tirs effectués derrière le filet.
+    if (net_x == 89 and x > 89) or (net_x == -89 and x < -89):
+        return None
+
+    return math.degrees(math.atan2(abs(y), abs(net_x - x)))
 
 def get_player_name(player_id, roster):
     """
@@ -211,7 +271,7 @@ def parse_situation(code, team_id, home_team_id):
     return strength, empty_net, category
 
 
-def extract_shots(game_data):
+def extract_shots(game_data, data_shots_normalized):
     """
     Transformer les tirs cadrés et les buts d'un match
     en DataFrame Pandas.
@@ -219,9 +279,9 @@ def extract_shots(game_data):
     Une ligne par événement.
     Identifiant unique : (game_id, event_id).
     """
-
     rows = []
 
+    game_id = game_data.get('id')
     home = game_data.get('homeTeam') or {}
     away = game_data.get('awayTeam') or {}
 
@@ -234,6 +294,13 @@ def extract_shots(game_data):
         if p.get('playerId') is not None
     }
 
+    saison = game_data.get('season')
+
+    recent = True
+    
+    if saison in [20162017, 20172018, 20182019]:
+        recent = False
+        
     for play in game_data.get('plays', []):
         kind = play.get('typeDescKey')
 
@@ -242,6 +309,8 @@ def extract_shots(game_data):
             continue
 
         det = play.get('details') or {}
+
+        event_id = play.get('eventId')
 
         team_id = det.get('eventOwnerTeamId')
 
@@ -273,10 +342,20 @@ def extract_shots(game_data):
 
         period = play.get('periodDescriptor') or {}
 
+        if recent:
+            shot_distance = calculate_shot_distance(x, y, team_id, home_id, side)
+            shot_angle = calculate_shot_angle(x, y, team_id, home_id, side)
+        else:
+            shots = data_shots_normalized[(data_shots_normalized['game_id'] == game_id) &(data_shots_normalized['event_id'] == event_id)]
+            x = shots['x_coord'].iloc[0]
+            y = shots['y_coord'].iloc[0]
+            shot_distance = calculate_shot_distance_ancient(x, y)
+            shot_angle = calculate_shot_angle_ancient(x, y)
+        
         rows.append({
-            'game_id': game_data.get('id'),
-            'event_id': play.get('eventId'),
-            'season': game_data.get('season'),
+            'game_id': game_id,
+            'event_id': event_id,
+            'season': saison,
             'game_type': game_data.get('gameType'),
             'game_date': game_data.get('gameDate'),
             'period': period.get('number'),
@@ -298,12 +377,8 @@ def extract_shots(game_data):
             'strength': strength,
             'strength_category': category,
             'situation_code': scode,
-            'shot_distance': calculate_shot_distance(
-                x, y, team_id, home_id, side
-            ),
-            'shot_angle': calculate_shot_angle(
-                x, y, team_id, home_id, side
-            ),
+            'shot_distance': shot_distance,
+            'shot_angle': shot_angle
         })
 
     return pd.DataFrame(rows, columns=COLUMNS)
