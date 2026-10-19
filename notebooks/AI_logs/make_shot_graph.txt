@@ -1,0 +1,153 @@
+Contexte : Pour générer le graphique, les exemples que j'ai trouvé graph_objects et non plotly.express. 
+J'ai chercher un peu sur internet pour voir comment l'exporter, mais je n'ai pas trouvé grand chose j'ai
+donc demander à gemini quel est la procédure pour exporter un graphique de ce type et ensuite comment l'intégrer 
+dans le blog.
+
+User Prompt: Comment faire pour exporter en html un objet graph_objects au lieu de px et ensuite comment je fait pour le mettre dans un blog utilisant jinja2 ?
+
+Réponse : 
+Pour exporter un objet `graph_objects` en HTML et l'intégrer dans un template Jinja2, la méthode est exactement la même que pour Plotly Express (`px`), car la méthode `.to_html()` ou `.write_html()` appartient à l'objet figure de Plotly, qu'il provienne de `px` ou de `go`.
+
+Voici comment procéder étape par étape :
+
+---
+
+### 1. Exporter l'objet `graph_objects` en HTML
+
+Vous pouvez soit sauvegarder directement le graphique dans un fichier, soit le convertir en chaîne de caractères pour l'injecter dans un template.
+
+* **Pour le sauvegarder directement dans un fichier :**
+```python
+import plotly.graph_objects as go
+
+# Création d'un objet go.Figure
+fig = go.Figure(
+    data=[go.Bar(x=["2018", "2019", "2020"], y=[20, 14, 23])]
+)
+
+# Sauvegarde au format HTML (autonome)
+fig.write_html("path/to/file.html")
+
+```
+
+
+
+```
+
+* **Pour le convertir en chaîne de caractères (pour Jinja2) :**
+  Utilisez `.to_html(full_html=False)` afin de récupérer uniquement le code HTML et JavaScript nécessaire sans recréer des balises `<html>` ou `<body>` complètes.
+  ```python
+  fig_html = fig.to_html(full_html=False)
+
+```
+
+---
+
+### 2. Intégrer le graphique dans un blog avec Jinja2
+
+#### Étape A : Préparer le template HTML
+
+Dans votre fichier de template (par exemple `blog_post.html`), utilisez la variable Jinja (par exemple `{{ fig }}`) là où vous souhaitez afficher le graphique. Assurez-vous d'inclure l'encodage UTF-8 dans le `<head>` pour que les caractères spéciaux s'affichent correctement.
+
+```html
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mon Article de Blog</title>
+</head>
+<body>
+    <h1>Mon magnifique graphique Plotly</h1>
+    
+    <!-- Insertion du graphique via Jinja2 -->
+    {{ fig }}
+    
+    <p>Suite du texte de l'article de blog...</p>
+</body>
+</html>
+
+```
+
+#### Étape B : Rendre le template avec Python
+
+Dans votre script Python (ou votre application web type Flask/FastAPI), passez le code HTML du graphique dans le dictionnaire de contexte transmis à Jinja2 :
+
+```python
+import plotly.graph_objects as go
+from jinja2 import Template
+
+# 1. Créer le graphique avec graph_objects
+fig = go.Figure(data=[go.Bar(x=["2018", "2019", "2020"], y=[20, 14, 23])])
+
+# 2. Générer le fragment HTML sans la page complète
+fig_html = fig.to_html(full_html=False)
+
+# 3. Charger et rendre le template Jinja2
+output_html_path = r"/path/to/output_blog.html"
+input_template_path = r"/path/to/blog_post.html"
+
+plotly_jinja_data = {"fig": fig_html}
+
+with open(output_html_path, "w", encoding="utf-8") as output_file:
+  with open(input_template_path, "r", encoding="utf-8") as template_file:
+    j2_template = Template(template_file.read())
+    output_file.write(j2_template.render(plotly_jinja_data))
+
+```
+
+---
+
+### 💡 Astuces utiles pour le web :
+
+* **Rendre le graphique responsive :** Si vous voulez que le graphique s'adapte automatiquement à la largeur de la page de votre blog, mettez à jour la disposition (`layout`) et la configuration avant de l'exporter :
+```python
+fig.update_layout(autosize=True, height=None)
+fig_html = fig.to_html(
+    config={"responsive": True}, default_height="80vh", full_html=False
+)
+
+```
+
+
+
+```
+* **Poids des fichiers :** Par défaut, `.to_html()` intègre toute la bibliothèque Plotly.js (ce qui alourdit le code HTML d'environ 5 Mo). Si votre blog affiche plusieurs graphiques sur la même page, pensez à inclure Plotly.js une seule fois via un lien CDN dans le `<head>` de votre template, puis utilisez le paramètre `include_plotlyjs=False` dans la méthode `.to_html(include_plotlyjs=False)`.
+
+Souhaitez-vous de l'aide pour l'intégrer dans un framework spécifique comme Flask ou Django ?
+
+```
+
+
+Autre requête : J'essayais de faire en sorte que le blanc de la couleur du contour soit associé à 0 et en cherchant sur la documentation et sur internet je n'ai pas trouvé ce qui changeait
+pour faire cela. J'ai essayer plusieurs schémas de couleur, mais rien ne faisait.
+
+Prompt : Mon graphe ressemble actuellement à ça mais, la valeur de 0 n'est toujours pas blanche, j'utilise en ce moment Rdbu et j'ai aussi essayer avec Rdbu_r sais tu comment modifier ça ? 
+(avec une photo du graphique)
+
+Réponse : En analysant votre image `image.png`, le problème vient du fait que dans votre graphique actuel, **0 agit comme une ligne de démarcation (une frontière) entre deux paliers de couleurs**, plutôt que comme le centre d'un palier.
+
+Puisque les couleurs remplissent l'espace *entre* les lignes de contour, la valeur 0 sépare la zone bleue de la zone grise/blanche. Pour que le 0 soit d'un blanc pur, il faut décaler les limites de vos contours pour que 0 se retrouve au milieu d'un intervalle.
+
+Voici comment corriger cela en définissant manuellement le début, la fin et la taille des paliers de contour :
+
+### La solution : Décaler les paliers (`contours`)
+
+Si vous souhaitez des paliers de `0.01` (comme on le voit sur votre barre), vous devez faire commencer vos contours à une valeur décalée de la moitié d'un palier (ex: `-0.025` au lieu de `-0.02`).
+
+```python
+fig.update_traces(
+    zmid=0, # Assure que le centre de la palette de couleurs est à 0
+    colorscale="RdBu_r",
+    contours=dict(
+        start=-0.035, # On décale le début pour ne pas tomber juste sur des dixièmes
+        end=0.035,
+        size=0.01     # Taille de chaque palier
+    )
+)
+
+```
+
+**Pourquoi cela fonctionne :**
+Avec cette configuration, vos lignes de contour seront tracées à `-0.015`, `-0.005`, `0.005`, `0.015`, etc.
+Ainsi, l'espace compris **entre `-0.005` et `0.005**` formera un seul bloc centré exactement sur 0. Combiné avec `zmid=0` et la palette `RdBu_r`, ce bloc central héritera de la couleur centrale de la palette, qui est le blanc.

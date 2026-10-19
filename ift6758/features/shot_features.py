@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 import pandas as pd
-
+from scipy.ndimage import gaussian_filter
 
 COLUMNS = [
     'game_id', 'event_id', 'season', 'game_type', 'game_date',
@@ -457,3 +457,64 @@ def shots_per_hour(n_bins_x, n_bins_y, season, team=None):
     df = df.set_index("Bins")
 
     return df
+
+    # Allez voir AI_logs (j'ai retiré les commentaires inutiles)
+def get_season_excess_shots(season, n_bins_x=50, n_bins_y=42, sigma=1.5):
+    """
+    Calcule pour une saison donnée les matrices 2D du taux excédentaire 
+    de chaque équipe par zone, lissé avec un noyau gaussien.
+    Retourne un dictionnaire contenant les matrices par équipe, 
+    ainsi que les bordures des axes X et Y pour Plotly.
+    """
+    root = Path(__file__).resolve().parents[2]
+    df = pd.read_csv(root / 'data' / 'processed' / 'shots_normalized.csv')
+    
+    # Isoler les tirs de la saison
+    shots = df[(df['season'] == season)]
+    
+    # Calcul du taux moyen de la ligue
+    n_matchs_ligue = shots['game_id'].nunique()
+    
+    # np.histogram2d permet de facilement identifier le nombre de tirs par zone
+    ligue_counts, xedges, yedges = np.histogram2d(
+        shots['x_norm'], shots['y_norm'], 
+        bins=[n_bins_x, n_bins_y], 
+        range=[[0, 100], [-42.5, 42.5]]
+    )
+
+    taux_ligue = ligue_counts / (2 * n_matchs_ligue)
+    
+    # Calcul du taux excédentaire pour chaque équipe
+    team_matrices = {}
+    
+    # Extraire les équipes uniques pour itérer dessus
+    equipes = shots[['team_id', 'team_name']].drop_duplicates().sort_values('team_name')
+    
+    for row in equipes.itertuples(index=False):
+        t_shots = shots[shots['team_id'] == row.team_id]
+        n_matchs_team = t_shots['game_id'].nunique()
+        
+        if n_matchs_team == 0:
+            continue
+            
+        # Décompte des tirs pour cette équipe spécifique
+        t_counts, _, _ = np.histogram2d(
+            t_shots['x_norm'], t_shots['y_norm'], 
+            bins=[n_bins_x, n_bins_y], 
+            range=[[0, 100], [-42.5, 42.5]]
+        )
+        
+        # Taux par match pour l'équipe
+        taux_equipe = t_counts / n_matchs_team
+        
+        # Différence avec la moyenne de la ligue
+        excedent = taux_equipe - taux_ligue
+        
+        # Lissage gaussien et transposition
+        # La transposition (.T) est cruciale pour que la matrice soit orientée 
+        # correctement (X horizontal, Y vertical).
+        excedent_lisse = gaussian_filter(excedent.T, sigma=sigma)
+        
+        team_matrices[row.team_name] = excedent_lisse
+        
+    return team_matrices, xedges, yedges
