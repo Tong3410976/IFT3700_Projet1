@@ -294,6 +294,8 @@ def draw_semi_rink(fig):
         return None
     fig.add_shape(type="rect", x0=-100, x1=100, y0=-42.5, y1=42.5,
                   line_color="#7f95aa")
+    # Ajouter un rectangle pour le but
+    fig.add_shape(type="rect", x0=89.5, x1=93, y0=-3,  y1=3, fillcolor="#7F7F7F", line_color="#e6a0a0")
     for x, colour in [ (0, "#e6a0a0"), (25, "#9bc2e6")]:
         fig.add_vline(x=x, line_color=colour)
     fig.update_xaxes(range=[0, 103], constrain="domain")

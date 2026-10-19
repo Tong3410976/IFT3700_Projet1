@@ -117,3 +117,37 @@ fig_html = fig.to_html(
 Souhaitez-vous de l'aide pour l'intégrer dans un framework spécifique comme Flask ou Django ?
 
 ```
+
+
+Autre requête : J'essayais de faire en sorte que le blanc de la couleur du contour soit associé à 0 et en cherchant sur la documentation et sur internet je n'ai pas trouvé ce qui changeait
+pour faire cela. J'ai essayer plusieurs schémas de couleur, mais rien ne faisait.
+
+Prompt : Mon graphe ressemble actuellement à ça mais, la valeur de 0 n'est toujours pas blanche, j'utilise en ce moment Rdbu et j'ai aussi essayer avec Rdbu_r sais tu comment modifier ça ? 
+(avec une photo du graphique)
+
+Réponse : En analysant votre image `image.png`, le problème vient du fait que dans votre graphique actuel, **0 agit comme une ligne de démarcation (une frontière) entre deux paliers de couleurs**, plutôt que comme le centre d'un palier.
+
+Puisque les couleurs remplissent l'espace *entre* les lignes de contour, la valeur 0 sépare la zone bleue de la zone grise/blanche. Pour que le 0 soit d'un blanc pur, il faut décaler les limites de vos contours pour que 0 se retrouve au milieu d'un intervalle.
+
+Voici comment corriger cela en définissant manuellement le début, la fin et la taille des paliers de contour :
+
+### La solution : Décaler les paliers (`contours`)
+
+Si vous souhaitez des paliers de `0.01` (comme on le voit sur votre barre), vous devez faire commencer vos contours à une valeur décalée de la moitié d'un palier (ex: `-0.025` au lieu de `-0.02`).
+
+```python
+fig.update_traces(
+    zmid=0, # Assure que le centre de la palette de couleurs est à 0
+    colorscale="RdBu_r",
+    contours=dict(
+        start=-0.035, # On décale le début pour ne pas tomber juste sur des dixièmes
+        end=0.035,
+        size=0.01     # Taille de chaque palier
+    )
+)
+
+```
+
+**Pourquoi cela fonctionne :**
+Avec cette configuration, vos lignes de contour seront tracées à `-0.015`, `-0.005`, `0.005`, `0.015`, etc.
+Ainsi, l'espace compris **entre `-0.005` et `0.005**` formera un seul bloc centré exactement sur 0. Combiné avec `zmid=0` et la palette `RdBu_r`, ce bloc central héritera de la couleur centrale de la palette, qui est le blanc.
