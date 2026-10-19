@@ -1,0 +1,198 @@
+Raison : Je comprends la fonction shots_per_hour, mais mes capacités en python ne me permettent pas de bien généraliser pour avoir pour une saison donnée, une martice avec l'excès de tirs par 
+zone pour chaque équipe. Je voulais qu'elle soit bien structuré pour faire le graphique ensuite. J'ai cherché sur internet, mais je ne suis jamais arrivé à quelque chose de concluent pour que 
+ça fonctionne bien.
+Un de mes tests était ceci, mais la foncion était beaucoup trop lente :
+```python 
+
+project_root = Path.cwd().parent
+x_bins = 50
+y_bins = 42
+season = 20182019
+data_shots_normalized = pd.read_csv(project_root/'data'/'processed'/'shots_normalized.csv')
+teams = data_shots_normalized[['team_id', 'team_name']].drop_duplicates().reset_index(drop=True)
+result_per_team = {}
+# Pour chaque équipe on veut le shots per hour
+for row in teams.itertuples(index=False):
+    result_per_team[row.team_name] = shots_per_hour(x_bins, y_bins, season, team=row.team_id)
+print(result_per_team)
+```
+
+Voici le prompt : (Je lui ai aussi donné un screenshot de l'explication de la section 5, pour qu'il ait un peu de contexte et les colonnes auxquelles nous avons accès dans le csv)
+
+Considérant que j'ai cette fonction : def shots_per_hour(n_bins_x, n_bins_y, season, team=None):
+    """
+        team = team_id
+        Retourne un tableau qui compte le nombre de tir et son taux de tirs par heure-équipe par région du terrain.
+        Si l'équipe est précisé : Retourne le taux exédentaire de tirs de l'équipe par rapport à la ligue.
+    """
+    root = Path(__file__).resolve().parents[2]
+    data_shots_normalized = pd.read_csv(root/'data'/'processed'/'shots_normalized.csv')
+
+    shots = data_shots_normalized.loc[data_shots_normalized["season"] == season] 
+
+    nbr_match = shots["game_id"].nunique()
+
+    interval_x = 100/n_bins_x
+    interval_y = 85/n_bins_y
+
+    rows = []
+
+    if team is not None:
+        shots_team = shots.loc[(shots["team_id"] == team)]
+        nbr_match_team = shots_team["game_id"].nunique()
+
+        if nbr_match_team == 0:
+            return None
+
+    for x in np.arange(0, 100, interval_x):
+        for y in np.arange(-42.5, 42.5, interval_y):
+            x_min = x
+            x_max = x + interval_x
+            y_min = y
+            y_max = y + interval_y
+
+            if (x_max == 100) & (y_max == 42.5):
+                shots_zone = shots.loc[(shots["x_norm"] >= x_min)&(shots["x_norm"] <= x_max)&(shots["y_norm"] >= y_min)&(shots["y_norm"] <= y_max)]
+            elif(x_max == 100):
+                shots_zone = shots.loc[(shots["x_norm"] >= x_min)&(shots["x_norm"] <= x_max)&(shots["y_norm"] >= y_min)&(shots["y_norm"] < y_max)]
+            elif(y_max == 42.5):
+                shots_zone = shots.loc[(shots["x_norm"] >= x_min)&(shots["x_norm"] < x_max)&(shots["y_norm"] >= y_min)&(shots["y_norm"] <= y_max)]
+            else:
+                shots_zone = shots.loc[(shots["x_norm"] >= x_min)&(shots["x_norm"] < x_max)&(shots["y_norm"] >= y_min)&(shots["y_norm"] < y_max)]
+
+            nbr_shots = len(shots_zone)
+            taux_shots = nbr_shots/(2*nbr_match)
+
+            if team is None: 
+                rows.append({
+                    "Bins": f"({x_min}; {x_max}) ({y_min}; {y_max})",
+                    "Nombre de tir" : nbr_shots,
+                    "Taux de tirs par heure-équipe" : taux_shots
+                })
+            else:
+
+                if (x_max == 100) & (y_max == 42.5):
+                    shots_zone_team = shots_team.loc[(shots_team["x_norm"] >= x_min)&(shots_team["x_norm"] <= x_max)&(shots_team["y_norm"] >= y_min)&(shots_team["y_norm"] <= y_max)]
+                elif(x_max == 100):
+                    shots_zone_team = shots_team.loc[(shots_team["x_norm"] >= x_min)&(shots_team["x_norm"] <= x_max)&(shots_team["y_norm"] >= y_min)&(shots_team["y_norm"] < y_max)]
+                elif(y_max == 42.5):
+                    shots_zone_team = shots_team.loc[(shots_team["x_norm"] >= x_min)&(shots_team["x_norm"] < x_max)&(shots_team["y_norm"] >= y_min)&(shots_team["y_norm"] <= y_max)]
+                else:
+                    shots_zone_team = shots_team.loc[(shots_team["x_norm"] >= x_min)&(shots_team["x_norm"] < x_max)&(shots_team["y_norm"] >= y_min)&(shots_team["y_norm"] < y_max)]
+
+                nbr_shots_team = len(shots_zone_team)
+                taux_shots_team = nbr_shots_team/(nbr_match_team)
+                taux_excess = taux_shots_team - taux_shots
+
+                rows.append({
+                    "Bins": f"({x_min}; {x_max}) ({y_min}; {y_max})",
+                    "Nombre de tir de l'équipe" : nbr_shots_team,
+                    "Taux de tirs par heure-équipe" : taux_shots_team,
+                    "Taux de tirs de la ligue" : taux_shots,
+                    "Taux d'excédentaire" : taux_excess
+                })    
+
+    df = pd.DataFrame(rows)
+    df = df.set_index("Bins")
+
+    return df
+
+Et que je souhaite généraliser en ayant comme signature : get_season_excess_shots(season, n_bins_x=50, n_bins_y=42, sigma=1.5):
+    """
+    Calcule pour une saison donnée les matrices 2D (50*42) du taux excédentaire de chaque équipe par zone
+    lissé avec un noyau gaussien.
+    """
+J'aimerais généraliser une fonction plus rapide qui permet de retourner une matrice qui pour chaque équipe me retourne le taux excédentaire par zone lisser avec un noyau gaussien. 
+L'objectif sera ensuite d'utiliser ce tableau pour faire un graphique plotly. Pourrais-tu me donner une fonction qui permettrait de faire cela et une explication de son fonctionnement ?
+
+Réponse : 
+
+Voici une version optimisée de la fonction qui abandonne les boucles imbriquées sur les régions spatiales au profit d'une approche vectorisée beaucoup plus performante.
+
+En informatique et en science des données, itérer manuellement sur les lignes d'un DataFrame Pandas (ou faire des filtres booléens répétés dans des boucles `for`) est très lent à cause de la surcharge de l'interpréteur Python. La solution est d'utiliser `numpy.histogram2d`, qui exécute le regroupement spatial (*binning*) directement en C de manière hautement optimisée.
+
+### La fonction optimisée
+
+```python
+import pandas as pd
+import numpy as np
+from pathlib import Path
+from scipy.ndimage import gaussian_filter
+
+def get_season_excess_shots(season, n_bins_x=50, n_bins_y=42, sigma=1.5):
+    """
+    Calcule pour une saison donnée les matrices 2D du taux excédentaire 
+    de chaque équipe par zone, lissé avec un noyau gaussien.
+    Retourne un dictionnaire contenant les matrices par équipe, 
+    ainsi que les bordures des axes X et Y pour Plotly.
+    """
+    root = Path(__file__).resolve().parents[2]
+    df = pd.read_csv(root / 'data' / 'processed' / 'shots_normalized.csv')
+    
+    # Isoler les tirs de la saison
+    shots = df[(df['season'] == season)]
+    
+    # 1. Calcul du taux moyen de la ligue
+    n_matchs_ligue = shots['game_id'].nunique()
+    
+    # np.histogram2d remplace tes deux boucles for et tes conditions complexes
+    ligue_counts, xedges, yedges = np.histogram2d(
+        shots['x_norm'], shots['y_norm'], 
+        bins=[n_bins_x, n_bins_y], 
+        range=[[0, 100], [-42.5, 42.5]]
+    )
+    
+    # Chaque match de la ligue implique 2 équipes. 
+    # Le taux de la ligue est donc calculé sur 2 * le nombre de matchs.
+    taux_ligue = ligue_counts / (2 * n_matchs_ligue)
+    
+    # 2. Calcul du taux excédentaire pour chaque équipe
+    team_matrices = {}
+    
+    # Extraire les équipes uniques pour itérer dessus
+    equipes = shots[['team_id', 'team_name']].drop_duplicates().sort_values('team_name')
+    
+    for row in equipes.itertuples(index=False):
+        t_shots = shots[shots['team_id'] == row.team_id]
+        n_matchs_team = t_shots['game_id'].nunique()
+        
+        if n_matchs_team == 0:
+            continue
+            
+        # Décompte des tirs pour cette équipe spécifique
+        t_counts, _, _ = np.histogram2d(
+            t_shots['x_norm'], t_shots['y_norm'], 
+            bins=[n_bins_x, n_bins_y], 
+            range=[[0, 100], [-42.5, 42.5]]
+        )
+        
+        # Taux par match pour l'équipe
+        taux_equipe = t_counts / n_matchs_team
+        
+        # Différence avec la moyenne de la ligue
+        excedent = taux_equipe - taux_ligue
+        
+        # 3. Lissage gaussien et transposition
+        # La transposition (.T) est cruciale pour que la matrice soit orientée 
+        # correctement (X horizontal, Y vertical) lors du rendu dans Plotly.
+        excedent_lisse = gaussian_filter(excedent.T, sigma=sigma)
+        
+        team_matrices[row.team_name] = excedent_lisse
+        
+    return team_matrices, xedges, yedges
+
+```
+
+### Explication du fonctionnement
+
+**1. Vectorisation du décompte (`np.histogram2d`)**
+Au lieu de vérifier pour chaque petit rectangle s'il contient des tirs (ce qui génère des milliers de requêtes de filtrage sur ton DataFrame), `np.histogram2d` prend simplement toutes les coordonnées X et Y d'un coup, projette une grille de 50x42 dessus (grâce au paramètre `bins`), et compte les points par case. Le temps d'exécution passe littéralement de plusieurs dizaines de secondes à une fraction de seconde.
+
+**2. Le calcul du taux de la ligue vs de l'équipe**
+Les directives du projet précisent qu'un match régulier donne 2 heures-équipe (puisqu'il y a 2 équipes sur la glace pendant 60 minutes). Le taux de la ligue est donc divisé par `2 * n_matchs_ligue`. En revanche, pour une équipe individuelle, on divise simplement par son propre nombre de matchs joués (`n_matchs_team`). On soustrait ensuite la matrice de la ligue à celle de l'équipe pour obtenir le taux excédentaire.
+
+**3. Le lissage Gaussien (`gaussian_filter`)**
+La grille brute générée par `np.histogram2d` est saccadée (des cases adjacentes peuvent avoir des valeurs très différentes). `gaussian_filter` applique une convolution sur cette matrice 2D, agissant comme un flou directionnel. Le paramètre `sigma` dicte l'intensité de l'étalement : plus il est élevé, plus le lissage englobe les cases voisines. Cela transforme les valeurs discrètes en une carte de chaleur (heatmap) fluide.
+
+**4. La transposition de la matrice (`excedent.T`)**
+C'est un détail d'algèbre linéaire important pour la visualisation : `numpy` structure les matrices retournées par `histogram2d` sous la forme `[x, y]`. Cependant, les bibliothèques de génération de graphiques comme Plotly, Matplotlib ou Seaborn lisent généralement les matrices 2D comme des images, soit sous le format `[rangées, colonnes]` (donc `[y, x]`). En transposant la matrice avant de la sauvegarder, on s'assure que l'axe de la longueur de la patinoire s'affiche bien horizontalement, et l'axe de la largeur verticalement.
