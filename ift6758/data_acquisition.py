@@ -262,7 +262,7 @@ def load_game(
 
     return df_game
 
-
+# Inspiré du code de la démo 2
 def draw_rink(fig):
     """
         Dessine le terrain
@@ -277,6 +277,27 @@ def draw_rink(fig):
         return None
     fig.update_xaxes(range=[-103, 103], title="x (ft)", constrain="domain")
     fig.update_yaxes(range=[-46, 46], title="y (ft)", scaleanchor="x", scaleratio=1, constrain="domain")
+    fig.update_layout(template="plotly_white", height=460,
+                      margin=dict(l=55, r=25, t=55, b=50))
+    return fig
+
+def draw_semi_rink(fig):
+    """
+        Dessine la demi-glace
+    """
+    path_rink = Path("../figures/nhl_rink.png")
+    if path_rink.exists():
+        img = Image.open(path_rink)
+        fig.add_layout_image(dict(source=img,xref="x",yref="y", x=-100, y=42.5, sizex=200, sizey=85, sizing="stretch", opacity=1, layer="below"))
+    else:
+        print("Le chemin \"{path_rink}\" n'existe pas")
+        return None
+    fig.add_shape(type="rect", x0=-100, x1=100, y0=-42.5, y1=42.5,
+                  line_color="#7f95aa")
+    for x, colour in [ (0, "#e6a0a0"), (25, "#9bc2e6")]:
+        fig.add_vline(x=x, line_color=colour)
+    fig.update_xaxes(range=[0, 103], constrain="domain")
+    fig.update_yaxes(range=[-46, 46], scaleanchor="x", scaleratio=1, constrain="domain")
     fig.update_layout(template="plotly_white", height=460,
                       margin=dict(l=55, r=25, t=55, b=50))
     return fig
