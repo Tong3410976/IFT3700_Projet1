@@ -83,7 +83,7 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-
+notebooks/demo
 # IPython
 profile_default/
 ipython_config.py
