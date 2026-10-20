@@ -271,7 +271,7 @@ def parse_situation(code, team_id, home_team_id):
     return strength, empty_net, category
 
 
-def extract_shots(game_data, data_shots_normalized):
+def extract_shots(game_data, data_shots_normalized=None):
     """
     Transformer les tirs cadrés et les buts d'un match
     en DataFrame Pandas.
@@ -298,7 +298,7 @@ def extract_shots(game_data, data_shots_normalized):
 
     recent = True
     
-    if saison in [20162017, 20172018, 20182019]:
+    if (data_shots_normalized is not None) and (saison in [20162017, 20172018, 20182019]):
         recent = False
         
     for play in game_data.get('plays', []):
@@ -346,11 +346,11 @@ def extract_shots(game_data, data_shots_normalized):
             shot_distance = calculate_shot_distance(x, y, team_id, home_id, side)
             shot_angle = calculate_shot_angle(x, y, team_id, home_id, side)
         else:
-            shots = data_shots_normalized[(data_shots_normalized['game_id'] == game_id) &(data_shots_normalized['event_id'] == event_id)]
-            x = shots['x_coord'].iloc[0]
-            y = shots['y_coord'].iloc[0]
-            shot_distance = calculate_shot_distance_ancient(x, y)
-            shot_angle = calculate_shot_angle_ancient(x, y)
+            shots = data_shots_normalized[(data_shots_normalized['game_id'] == game_id) & (data_shots_normalized['event_id'] == event_id)].iloc[0]
+            x_norm = shots['x_norm']
+            y_norm = shots['y_norm']
+            shot_distance = calculate_shot_distance_ancient(x_norm, y_norm)
+            shot_angle = calculate_shot_angle_ancient(x_norm, y_norm)
         
         rows.append({
             'game_id': game_id,
