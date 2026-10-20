@@ -81,27 +81,46 @@ def calculate_shot_distance(x, y, team_id, home_team_id, defending_side):
 
     return math.hypot(x - net_x, y) if net_x is not None else None
 
-
-def calculate_shot_distance_ancient(x, y):
+# Voir AI logs
+def deduce_home_defending_sides(game_data):
     """
-    Calcule la distance entre le tir et le filet.
-
-    Parameters
-    ----------
-    x : float
-        Coordonnée x du tir.
-
-    y : float
-        Coordonnée y du tir.
-
-    Returns
-    -------
-    float
-        Distance entre le tir et le filet.
+    Déduit le côté défendu par l'équipe à domicile pour chaque période
+    en observant le premier tir en zone offensive (pour les saisons où
+    homeTeamDefendingSide n'est pas fourni par l'API, ex. 2016 à 2019).
     """
-    
+    home_id = (game_data.get('homeTeam') or {}).get('id')
+    periods = {}
 
-    return math.hypot(x - 89, y)
+    for play in game_data.get('plays', []):
+        p_num = (play.get('periodDescriptor') or {}).get('number')
+        if p_num is None or p_num in periods:
+            continue
+
+        det = play.get('details') or {}
+        zone = det.get('zoneCode')
+        x = det.get('xCoord')
+        team = det.get('eventOwnerTeamId')
+
+        if zone == 'O' and x is not None and team is not None:
+            if team == home_id:
+                periods[p_num] = 'left' if x > 0 else 'right'
+            else:
+                periods[p_num] = 'right' if x > 0 else 'left'
+
+    opposite = {'left': 'right', 'right': 'left'}
+    if 1 in periods:
+        if 2 not in periods:
+            periods[2] = opposite[periods[1]]
+        if 3 not in periods:
+            periods[3] = periods[1]
+        if 4 not in periods and 3 in periods:
+            periods[4] = opposite[periods[3]]
+    elif 2 in periods:
+        periods[1] = opposite[periods[2]]
+        if 3 not in periods:
+            periods[3] = periods[1]
+
+    return periods
 
 
 def calculate_shot_angle(x, y, team_id, home_team_id, defending_side):
@@ -147,45 +166,6 @@ def calculate_shot_angle(x, y, team_id, home_team_id, defending_side):
 
     return math.degrees(math.atan2(abs(y), abs(net_x - x)))
 
-def calculate_shot_angle_ancient(x, y):
-    """
-    Angle absolu  (0 à 90 degrés) entre le tir et le filet.
-    Les tirs derrière la ligne de but restent inconnus.
-
-    Parameters
-    ----------
-    x : float
-        Coordonnée x du tir.
-
-    y : float
-        Coordonnée y du tir.
-
-    team_id : int
-        Identifiant de l'équipe.
-
-    home_team_id : int
-        Identifiant de l'équipe à domicile.
-
-    defending_side : str
-        Côté défendu par l'équipe à domicile.
-
-    Returns
-    -------
-    float
-        Angle entre le tir et le filet.
-    """
-
-    if x is None or y is None:
-        return None
-
-    net_x = 89
-
-    # Ne pas attribuer  0 degré
-    # aux tirs effectués derrière le filet.
-    if (net_x == 89 and x > 89) or (net_x == -89 and x < -89):
-        return None
-
-    return math.degrees(math.atan2(abs(y), abs(net_x - x)))
 
 def get_player_name(player_id, roster):
     """
@@ -271,7 +251,7 @@ def parse_situation(code, team_id, home_team_id):
     return strength, empty_net, category
 
 
-def extract_shots(game_data, data_shots_normalized):
+def extract_shots(game_data):
     """
     Transformer les tirs cadrés et les buts d'un match
     en DataFrame Pandas.
@@ -295,12 +275,8 @@ def extract_shots(game_data, data_shots_normalized):
     }
 
     saison = game_data.get('season')
+    home_sides = deduce_home_defending_sides(game_data)
 
-    recent = True
-    
-    if saison in [20162017, 20172018, 20182019]:
-        recent = False
-        
     for play in game_data.get('plays', []):
         kind = play.get('typeDescKey')
 
@@ -326,7 +302,13 @@ def extract_shots(game_data, data_shots_normalized):
 
         zone_code = det.get('zoneCode')
 
+        period = play.get('periodDescriptor') or {}
+        period_number = period.get('number')
+
         side = play.get('homeTeamDefendingSide')
+        if side is None:
+            side = home_sides.get(period_number)
+
         scode = play.get('situationCode')
 
         strength, empty_net, category = parse_situation(
@@ -340,17 +322,8 @@ def extract_shots(game_data, data_shots_normalized):
         else:
             team_info = {}
 
-        period = play.get('periodDescriptor') or {}
-
-        if recent:
-            shot_distance = calculate_shot_distance(x, y, team_id, home_id, side)
-            shot_angle = calculate_shot_angle(x, y, team_id, home_id, side)
-        else:
-            shots = data_shots_normalized[(data_shots_normalized['game_id'] == game_id) &(data_shots_normalized['event_id'] == event_id)]
-            x = shots['x_coord'].iloc[0]
-            y = shots['y_coord'].iloc[0]
-            shot_distance = calculate_shot_distance_ancient(x, y)
-            shot_angle = calculate_shot_angle_ancient(x, y)
+        shot_distance = calculate_shot_distance(x, y, team_id, home_id, side)
+        shot_angle = calculate_shot_angle(x, y, team_id, home_id, side)
         
         rows.append({
             'game_id': game_id,
