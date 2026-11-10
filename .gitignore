@@ -144,5 +144,12 @@ dmypy.json
 # Données téléchargées depuis l'API de la LNH
 data/
 
+# Wandb (logs locaux des exécutions)
+wandb/
+
+# Modèles locaux sérialisés 
+models/
+*.joblib
+
 # Configuration locale de PyCharm
 .idea/

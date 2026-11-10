@@ -16,6 +16,8 @@ dependencies = [
     "lxml",
     "ipywidgets",
     "pandasai>=3.0.0",
+    "wandb>=0.31.0",
+    "scikit-learn>=1.7.2",
 ]
 
 [project.optional-dependencies]
