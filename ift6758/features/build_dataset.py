@@ -16,13 +16,6 @@ PROCESSED = ROOT / 'data' / 'processed'
 
 def build_dataset():
     files = sorted(RAW.rglob('*.json'))
-    
-    path = ROOT / 'data' / 'processed' / 'shots_normalized.csv'
-
-    if path.exists():
-        data_shots_normalized = pd.read_csv(path)
-    else:
-        data_shots_normalized = None
 
     if not files:
         raise FileNotFoundError('Aucun JSON trouvé dans data/raw')
@@ -31,7 +24,7 @@ def build_dataset():
 
     for file in files:
         with file.open(encoding='utf-8') as f:
-            frame = extract_shots(json.load(f), data_shots_normalized)
+            frame = extract_shots(json.load(f))
 
         if not frame.empty:
             frames.append(frame)

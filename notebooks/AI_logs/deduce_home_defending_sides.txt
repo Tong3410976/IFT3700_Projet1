@@ -1,0 +1,81 @@
+Contexte, dans la branche main nous avions déjà implémenter une méthode qui permettait de calculer la distance pour les saisons avant 2018-2019 qui ne contenait pas 
+la caractéristique home_defending_side. Par contre, la méthode dépendait de normalize_shots qui lui dépendait des shots construite avec build_dataset() ce qui faisait en sorte
+que si nous voulions calculer la distance pour les saisons avant 2018-2018, il fallait obligatoirement passer par build_dataset() deux fois ce qui est lourd calculatoirement et terrible au
+niveau dépendance entre les fonctions. Je ne savais pas comment le faire sans normalize_shots et après de nombreux essais je ne comprenais tout simplement pas comment faire alors j'ai demandé à 
+Gemini de m'aider pour démêler ça.
+
+Prompt : Voici notre fichier (je lui envoie shot_features.py), en ce moment la fonction extract_shots dépend de normalize_shots, qui lui dépend de extract_shots ce qui n'est pas logique.
+Pourrais-tu me donner une fonction qui permettrait d'isoler la logique de calcul de distance pour les saisons <= 2018-2019 (car le caractéristique home_defending_side n'est pas présent dans les données de ces saisons), en utilisant d'autres caractéristique comme le zone code et le 
+d'équipe de coté à chaque période ? (Nous utilisons l'API officiel de la NHL)
+
+
+Réponse : Pour résoudre cette dépendance circulaire et calculer la distance des tirs sans dépendre d'une normalisation préalable du DataFrame, il faut combler un manque historique de l'API de la LNH : pour les saisons antérieures ou égales à 2018-2019, la clé `homeTeamDefendingSide` n'est pas renseignée au niveau de l'événement.
+
+Puisque la coordonnée $X$ de la zone offensive dépend du côté défendu par l'équipe adverse, la position du filet cible ($x = \pm 89$) ne peut être connue sans déterminer au préalable de quel côté chaque équipe défend à chaque période.
+
+En observant les événements dont le `zoneCode` est `'O'` (zone offensive) et en appliquant l'alternance standard des côtés entre les périodes (périodes 1 et 3 identiques, périodes 2 et prolongation opposées), on peut reconstituer les côtés défendus pour l'ensemble du match.
+
+Voici la fonction à intégrer directement dans ton module :
+
+```python
+def deduce_home_defending_sides(game_data):
+    """
+    Déduit le côté défendu par l'équipe à domicile pour chaque période
+    en observant le premier tir en zone offensive (pour les saisons où
+    homeTeamDefendingSide n'est pas fourni par l'API, ex. 2016 à 2019).
+    """
+    home_id = (game_data.get('homeTeam') or {}).get('id')
+    periods = {}
+
+    for play in game_data.get('plays', []):
+        p_num = (play.get('periodDescriptor') or {}).get('number')
+        if p_num is None or p_num in periods:
+            continue
+
+        det = play.get('details') or {}
+        zone = det.get('zoneCode')
+        x = det.get('xCoord')
+        team = det.get('eventOwnerTeamId')
+
+        if zone == 'O' and x is not None and team is not None:
+            if team == home_id:
+                periods[p_num] = 'left' if x > 0 else 'right'
+            else:
+                periods[p_num] = 'right' if x > 0 else 'left'
+
+    opposite = {'left': 'right', 'right': 'left'}
+    if 1 in periods:
+        if 2 not in periods:
+            periods[2] = opposite[periods[1]]
+        if 3 not in periods:
+            periods[3] = periods[1]
+        if 4 not in periods and 3 in periods:
+            periods[4] = opposite[periods[3]]
+    elif 2 in periods:
+        periods[1] = opposite[periods[2]]
+        if 3 not in periods:
+            periods[3] = periods[1]
+
+    return periods
+
+```
+
+### Intégration dans `extract_shots`
+
+Dans `extract_shots`, tu appelles cette fonction une seule fois au début du match :
+
+```python
+home_sides = deduce_home_defending_sides(game_data)
+
+```
+
+Puis, lors du traitement de chaque événement :
+
+```python
+side = play.get('homeTeamDefendingSide')
+if side is None:
+    side = home_sides.get(period_number)
+
+```
+
+Grâce à ce mécanisme, `get_target_net` reçoit toujours un côté valide (`'left'` ou `'right'`), ce qui permet à `calculate_shot_distance` et `calculate_shot_angle` de fonctionner dès la phase d'extraction brute sans exiger l'exécution de `normalize_shots`.
